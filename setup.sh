@@ -350,14 +350,14 @@ EOF
   chmod +x "$POLL_SCRIPT_HOST"
 fi
 
-# === 10. Build and start the container ==================================
+# === 10. Run injection immediately =======================================
+echo "[+] Running first injection..."
+"$INJECTOR_SCRIPT"
+
+# === 11. Build and start the container ==================================
 echo "[+] Building and starting uisp-tester container..."
 cd "$COMPOSE_DIR"
 docker compose up -d --build uisp-tester
-
-# === 11. Run injection immediately =======================================
-echo "[+] Running first injection..."
-"$INJECTOR_SCRIPT"
 
 # === 12. Post-deploy self-test ==========================================
 run_self_test() {
