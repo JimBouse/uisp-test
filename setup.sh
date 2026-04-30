@@ -19,7 +19,7 @@ INJECTOR_SCRIPT="/root/inject-pgpass.sh"
 LOG_FILE="/var/log/inject-pgpass.log"
 CRON_FILE="/etc/cron.d/inject-pgpass"
 REPO_URL="https://github.com/JimBouse/uisp-test.git"
-SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]:-}")"
 CANONICAL_SCRIPT="$COMPOSE_DIR/setup.sh"
 
 # Source of secret
