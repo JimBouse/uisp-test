@@ -107,7 +107,7 @@ RUN apt-get update && apt-get install -y wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python libraries for polling script
-RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas inotify-tools && rm -rf /var/lib/apt/lists/*
 
 # Timezone
 ENV TZ=America/New_York
@@ -186,7 +186,7 @@ check_or_prompt_replace() {
     echo "[INFO] Required Dockerfile settings:"
     echo "  - Base image: ubuntu:24.04"
     echo "  - Includes psql/network tools/python3/cron"
-    echo "  - Includes python3-psycopg2 and python3-pandas"
+    echo "  - Includes python3-psycopg2, python3-pandas, and inotify-tools"
     echo "  - ENTRYPOINT is /app/entrypoint.sh"
     echo "  - CMD is sleep infinity"
   else

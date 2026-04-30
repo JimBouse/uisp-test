@@ -13,15 +13,29 @@ if [ ! -f /container-data/.initialized ]; then
 fi
 
 # === PGPass Setup ===
+install_pgpass() {
+  if [ -f /container-data/pgpass.txt ]; then
+    PGPASS=$(head -n 1 /container-data/pgpass.txt | tr -d '\r\n')
+    printf 'unms-postgres:5432:unms:unms:%s\n' "$PGPASS" > /root/.pgpass
+    chmod 600 /root/.pgpass
+  fi
+}
+
 if [ -f /container-data/pgpass.txt ]; then
   echo "[PG] Found pgpass.txt - installing for psql..."
-  PGPASS=$(head -n 1 /container-data/pgpass.txt | tr -d '\r\n')
-  echo "unms-postgres:5432:unms:unms:$PGPASS" > /root/.pgpass
-  chmod 600 /root/.pgpass
+  install_pgpass
   echo "[PG] psql auto-login ready: psql -h unms-postgres -U unms unms"
 else
   echo "[WARN] No pgpass.txt in container-data/ - psql will prompt for password"
 fi
+
+# Watch pgpass.txt for changes and refresh ~/.pgpass immediately
+(
+  while inotifywait -e close_write /container-data/pgpass.txt 2>/dev/null; do
+    install_pgpass
+    echo "[PG] pgpass.txt changed - ~/.pgpass refreshed"
+  done
+) &
 
 # Background monitor (optional)
 [ -f /app/monitor-unms.sh ] && /app/monitor-unms.sh >> /container-data/logs/unms.log 2>&1 &

@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python libraries for polling script
-RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas inotify-tools && rm -rf /var/lib/apt/lists/*
 
 # Timezone
 ENV TZ=America/New_York
