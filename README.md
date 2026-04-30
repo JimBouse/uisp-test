@@ -125,6 +125,43 @@ The container connects to UISP networks:
 
 These networks are created by UISP and must exist before the container starts.
 
+## Uninstallation
+
+To completely remove the uisp-tester container and all associated resources:
+
+### 1. Stop and remove the container
+
+```bash
+docker compose -f /opt/uisp-test/docker-compose.yml down
+```
+
+### 2. Remove the cron job
+
+```bash
+sudo rm /etc/cron.d/inject-pgpass
+```
+
+### 3. Remove the injector script (optional)
+
+```bash
+sudo rm /root/inject-pgpass.sh
+```
+
+### 4. Remove the logs (optional)
+
+```bash
+sudo rm /var/log/inject-pgpass.log
+sudo rm -rf /opt/uisp-test/container-data/logs/
+```
+
+### 5. Remove the entire workspace (optional)
+
+```bash
+sudo rm -rf /opt/uisp-test
+```
+
+**Note:** Only remove the workspace directory if you no longer need the polling data, configuration files, and CSV reports.
+
 ## License
 
 See repository for license information.
