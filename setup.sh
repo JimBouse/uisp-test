@@ -10,7 +10,7 @@ fi
 # === 2. Configuration ===================================================
 COMPOSE_DIR="/opt/uisp-test"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
-HOST_DATA_DIR="$COMPOSE_DIR/uisp-tester-data"
+HOST_DATA_DIR="$COMPOSE_DIR/container-data"
 TARGET_IN_CONTAINER="/container-data/pgpass.txt"
 HOST_TARGET="$HOST_DATA_DIR/pgpass.txt"
 INJECTOR_SCRIPT="/root/inject-pgpass.sh"
@@ -25,35 +25,78 @@ echo "[+] Creating directories..."
 mkdir -p "$HOST_DATA_DIR"
 mkdir -p "$(dirname "$INJECTOR_SCRIPT")"
 
-# === 4. Create Dockerfile ===============================================
-echo "[+] Writing Dockerfile..."
-cat > "$COMPOSE_DIR/Dockerfile" <<'EOF'
+# === 4. Validate Dockerfile + docker-compose.yml ========================
+TEMP_DIR=$(mktemp -d)
+EXPECTED_DOCKERFILE="$TEMP_DIR/Dockerfile.expected"
+EXPECTED_COMPOSE="$TEMP_DIR/docker-compose.yml.expected"
+
+cleanup() {
+  rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
+
+cat > "$EXPECTED_DOCKERFILE" <<'EOF'
+# /opt/uisp-test/Dockerfile
 FROM ubuntu:24.04
 
 # Install tools and Python
-RUN apt-get update && apt-get install -y wget curl jq bash postgresql-client dnsutils net-tools iputils-ping openssl ca-certificates tzdata python3 python3-pip python3-psycopg2 python3-pandas && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y wget \
+    curl \
+    jq \
+    bash \
+    cron \
+    postgresql-client \
+    dnsutils \
+    net-tools \
+    iputils-ping \
+    openssl \
+    ca-certificates \
+    tzdata \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /container-data
+# Install Python libraries for polling script
+RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas && rm -rf /var/lib/apt/lists/*
+
+# Timezone
+ENV TZ=America/New_York
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Dirs
+RUN mkdir -p /app /container-data /container-data/logs
+
+# Copy files
+COPY . /app/
+
+# Scripts executable
+RUN chmod +x /app/*.sh 2>/dev/null || true
+
+WORKDIR /app
+
+# MOTD
+RUN echo '# uisp-tester ready!' > /etc/motd && \
+    echo '# psql, curl, jq, dig, ping' >> /etc/motd && \
+    echo '# Data: /container-data' >> /etc/motd
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["sleep", "infinity"]
 EOF
 
-# === 5. Create docker-compose.yml for uisp-tester =======================
-echo "[+] Writing docker-compose.yml..."
-cat > "$COMPOSE_FILE" <<'EOF'
+cat > "$EXPECTED_COMPOSE" <<'EOF'
+# /opt/uisp-test/docker-compose.yml
 services:
   uisp-tester:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: uisp-tester
-    command: sleep infinity
     restart: unless-stopped
     volumes:
-      - ./uisp-tester-data:/container-data
+      - ./container-data:/container-data   # ← Now consistent
     networks:
       unms_public: {}
       unms_internal: {}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://unms-api:8081/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://unms-api:8081/nms/api/v2.1/nms/version"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -65,6 +108,80 @@ networks:
   unms_internal:
     external: true
 EOF
+
+check_or_prompt_replace() {
+  local target_file="$1"
+  local expected_file="$2"
+  local label="$3"
+
+  normalize_for_compare() {
+    # Normalize line endings and ensure a trailing newline to avoid false mismatches.
+    sed -e 's/\r$//' -e '$a\' "$1"
+  }
+
+  if [[ ! -f "$target_file" ]]; then
+    echo "[WARN] $label missing: $target_file"
+    cp "$expected_file" "$target_file"
+    echo "[+] Created $label using expected template"
+    return
+  fi
+
+  if diff -q <(normalize_for_compare "$target_file") <(normalize_for_compare "$expected_file") >/dev/null; then
+    echo "[+] $label checked and in proper format"
+    return
+  fi
+
+  echo "[WARN] $label differs from expected template"
+  if [[ "$label" == "Dockerfile" ]]; then
+    echo "[INFO] Required Dockerfile settings:"
+    echo "  - Base image: ubuntu:24.04"
+    echo "  - Includes psql/network tools/python3/cron"
+    echo "  - Includes python3-psycopg2 and python3-pandas"
+    echo "  - ENTRYPOINT is /app/entrypoint.sh"
+    echo "  - CMD is sleep infinity"
+  else
+    echo "[INFO] Required docker-compose.yml settings:"
+    echo "  - Service name: uisp-tester"
+    echo "  - Uses local build context (build: .)"
+    echo "  - Volume: ./container-data:/container-data"
+    echo "  - Networks: unms_public and unms_internal"
+    echo "  - Healthcheck against http://unms-api:8081/nms/api/v2.1/nms/version"
+  fi
+
+  while true; do
+    echo "[INFO] Choose action for $label:"
+    echo "  [R] Replace with expected template"
+    echo "  [V] View full diff"
+    echo "  [A] Abort setup"
+    read -r -p "Enter R, V, or A: " REPLY
+    case "$REPLY" in
+      [Rr])
+        cp "$expected_file" "$target_file"
+        echo "[+] Replaced $label"
+        break
+        ;;
+      [Vv])
+        echo "[INFO] Diff (current -> expected):"
+        diff -u "$target_file" "$expected_file" || true
+        ;;
+      [Aa]|"")
+        echo "[ERROR] $label is not in required format; setup cannot continue"
+        exit 1
+        ;;
+      *)
+        echo "[WARN] Invalid choice. Please enter R, V, or A."
+        ;;
+    esac
+  done
+
+  if ! diff -q <(normalize_for_compare "$target_file") <(normalize_for_compare "$expected_file") >/dev/null; then
+    echo "[ERROR] $label still differs after attempted replacement; setup cannot continue"
+    exit 1
+  fi
+}
+
+check_or_prompt_replace "$COMPOSE_DIR/Dockerfile" "$EXPECTED_DOCKERFILE" "Dockerfile"
+check_or_prompt_replace "$COMPOSE_FILE" "$EXPECTED_COMPOSE" "docker-compose.yml"
 
 # === 6. Create injector script ==========================================
 echo "[+] Creating injector script: $INJECTOR_SCRIPT"
@@ -104,7 +221,76 @@ docker compose up -d --build uisp-tester
 echo "[+] Running first injection..."
 "$INJECTOR_SCRIPT"
 
-# === 10. Final status ===================================================
+# === 10. Post-deploy self-test ==========================================
+run_self_test() {
+  local failures=0
+  local health=""
+
+  echo "[+] Running post-deploy self-test..."
+
+  if docker ps --format '{{.Names}}' | grep -qx 'uisp-tester'; then
+    echo "[PASS] Container exists: uisp-tester"
+  else
+    echo "[FAIL] Container not found: uisp-tester"
+    failures=$((failures + 1))
+  fi
+
+  # Allow healthcheck to transition from "starting" to "healthy".
+  for _ in {1..30}; do
+    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' uisp-tester 2>/dev/null || echo "missing")
+    if [[ "$health" == "healthy" || "$health" == "none" ]]; then
+      break
+    fi
+    sleep 3
+  done
+
+  if [[ "$health" == "healthy" || "$health" == "none" ]]; then
+    echo "[PASS] Container health state: $health"
+  else
+    echo "[FAIL] Container health state: $health"
+    failures=$((failures + 1))
+  fi
+
+  if docker exec uisp-tester bash -lc 'wget --spider -q http://unms-api:8081/nms/api/v2.1/nms/version'; then
+    echo "[PASS] API endpoint reachable from container"
+  else
+    echo "[FAIL] API endpoint unreachable from container"
+    failures=$((failures + 1))
+  fi
+
+  if docker exec uisp-tester bash -lc "psql -h unms-postgres -U unms -d unms -tAc 'SELECT 1' | grep -qx 1"; then
+    echo "[PASS] PostgreSQL connectivity check"
+  else
+    echo "[FAIL] PostgreSQL connectivity check"
+    failures=$((failures + 1))
+  fi
+
+  if docker exec uisp-tester bash -lc 'python3 /container-data/poll_unms_status.py >/tmp/poll-selftest.log 2>&1'; then
+    echo "[PASS] Poll script execution"
+  else
+    echo "[FAIL] Poll script execution"
+    docker exec uisp-tester bash -lc 'tail -n 40 /tmp/poll-selftest.log || true'
+    failures=$((failures + 1))
+  fi
+
+  if docker exec uisp-tester bash -lc 'test -f /container-data/unms_status.csv'; then
+    echo "[PASS] Output file present: /container-data/unms_status.csv"
+  else
+    echo "[FAIL] Output file missing: /container-data/unms_status.csv"
+    failures=$((failures + 1))
+  fi
+
+  if [[ $failures -gt 0 ]]; then
+    echo "[ERROR] Self-test failed with $failures issue(s)."
+    exit 1
+  fi
+
+  echo "[+] Self-test passed"
+}
+
+run_self_test
+
+# === 11. Final status ===================================================
 echo
 echo "Installation complete!"
 echo "  Container: uisp-tester"
@@ -117,7 +303,7 @@ echo "Verify:"
 echo "  docker exec uisp-tester cat $TARGET_IN_CONTAINER"
 echo
 
-# === 11. Setup logrotate for inject-pgpass.log ==========================
+# === 12. Setup logrotate for inject-pgpass.log ==========================
 echo "[+] Configuring logrotate for inject-pgpass.log..."
 cat > /etc/logrotate.d/inject-pgpass <<'EOF'
 /var/log/inject-pgpass.log {

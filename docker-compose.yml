@@ -10,7 +10,7 @@ services:
       unms_public: {}
       unms_internal: {}
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://unms-api:8081/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://unms-api:8081/nms/api/v2.1/nms/version"]
       interval: 30s
       timeout: 10s
       retries: 3
