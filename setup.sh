@@ -357,7 +357,7 @@ echo "[+] Running first injection..."
 # === 11. Build and start the container ==================================
 echo "[+] Building and starting uisp-tester container..."
 cd "$COMPOSE_DIR"
-docker compose up -d --build uisp-tester
+docker compose up -d --build --force-recreate uisp-tester
 
 # === 12. Post-deploy self-test ==========================================
 run_self_test() {
