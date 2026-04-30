@@ -12,20 +12,70 @@ COMPOSE_DIR="/opt/uisp-test"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 HOST_DATA_DIR="$COMPOSE_DIR/container-data"
 TARGET_IN_CONTAINER="/container-data/pgpass.txt"
+POLL_SCRIPT_IN_CONTAINER="/container-data/poll_unms_status.py"
+POLL_SCRIPT_HOST="$HOST_DATA_DIR/poll_unms_status.py"
 HOST_TARGET="$HOST_DATA_DIR/pgpass.txt"
 INJECTOR_SCRIPT="/root/inject-pgpass.sh"
 LOG_FILE="/var/log/inject-pgpass.log"
 CRON_FILE="/etc/cron.d/inject-pgpass"
+REPO_URL="https://github.com/JimBouse/uisp-test.git"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+CANONICAL_SCRIPT="$COMPOSE_DIR/setup.sh"
 
 # Source of secret
 SRC_COMPOSE="/home/unms/app/docker-compose.yml"
 
-# === 3. Create directories ==============================================
+INSTALL_USER="${SUDO_USER:-root}"
+INSTALL_GROUP="$(id -gn "$INSTALL_USER" 2>/dev/null || echo root)"
+
+cd /
+
+# === 3. Bootstrap for fresh installs ====================================
+if [[ "${1:-}" != "--no-bootstrap" && "$SCRIPT_PATH" != "$CANONICAL_SCRIPT" ]]; then
+  echo "[+] Bootstrap mode detected"
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "[+] Installing git..."
+    apt-get update
+    apt-get install -y git
+  fi
+
+  if [[ ! -f "$CANONICAL_SCRIPT" ]]; then
+    rm -rf "$COMPOSE_DIR"
+    git clone "$REPO_URL" "$COMPOSE_DIR"
+  fi
+
+  echo "[+] Re-running installer from $CANONICAL_SCRIPT"
+  exec bash "$CANONICAL_SCRIPT" --no-bootstrap
+fi
+
+# === 4. Ensure Docker + Compose are available ===========================
+ensure_docker() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    echo "[+] Docker + Compose plugin found"
+    return
+  fi
+
+  echo "[+] Installing Docker engine + Compose plugin..."
+  apt-get update
+  apt-get install -y docker.io docker-compose-plugin
+  systemctl enable --now docker
+}
+
+ensure_docker
+
+if [[ ! -f "$SRC_COMPOSE" ]]; then
+  echo "[ERROR] Expected UISP compose file not found: $SRC_COMPOSE"
+  echo "[ERROR] Install UISP first, then rerun this installer"
+  exit 1
+fi
+
+# === 5. Create directories ==============================================
 echo "[+] Creating directories..."
 mkdir -p "$HOST_DATA_DIR"
 mkdir -p "$(dirname "$INJECTOR_SCRIPT")"
 
-# === 4. Validate Dockerfile + docker-compose.yml ========================
+# === 6. Validate Dockerfile + docker-compose.yml ========================
 TEMP_DIR=$(mktemp -d)
 EXPECTED_DOCKERFILE="$TEMP_DIR/Dockerfile.expected"
 EXPECTED_COMPOSE="$TEMP_DIR/docker-compose.yml.expected"
@@ -183,7 +233,7 @@ check_or_prompt_replace() {
 check_or_prompt_replace "$COMPOSE_DIR/Dockerfile" "$EXPECTED_DOCKERFILE" "Dockerfile"
 check_or_prompt_replace "$COMPOSE_FILE" "$EXPECTED_COMPOSE" "docker-compose.yml"
 
-# === 6. Create injector script ==========================================
+# === 7. Create injector script ==========================================
 echo "[+] Creating injector script: $INJECTOR_SCRIPT"
 cat > "$INJECTOR_SCRIPT" <<EOF
 #!/bin/bash
@@ -205,23 +255,111 @@ echo "[\$(date)] Injected pgpass (len \${#PGPASS}) → $HOST_TARGET" >> $LOG_FIL
 EOF
 chmod +x "$INJECTOR_SCRIPT"
 
-# === 7. Install cron job ================================================
+# === 8. Install cron job ================================================
 echo "[+] Installing cron job..."
 cat > "$CRON_FILE" <<EOF
 */5 * * * * root $INJECTOR_SCRIPT >> $LOG_FILE 2>&1
 EOF
 chmod 644 "$CRON_FILE"
 
-# === 8. Build and start the container ===================================
+# === 9. Ensure poll script exists =======================================
+if [[ ! -f "$POLL_SCRIPT_HOST" ]]; then
+  echo "[WARN] Missing poll script at $POLL_SCRIPT_HOST"
+  echo "[+] Creating default poll script..."
+  cat > "$POLL_SCRIPT_HOST" <<'EOF'
+#!/usr/bin/env python3
+import os
+from datetime import datetime
+
+import pandas as pd
+import psycopg2
+
+DB_HOST = os.getenv('DB_HOST', 'unms-postgres')
+DB_PORT = os.getenv('DB_PORT', '5432')
+DB_NAME = os.getenv('DB_NAME', 'unms')
+DB_USER = os.getenv('DB_USER', 'unms')
+DB_PASS = None
+
+pgpass_path = os.path.expanduser('~/.pgpass')
+if os.path.exists(pgpass_path):
+  with open(pgpass_path) as f:
+    for line in f:
+      parts = line.strip().split(':')
+      if len(parts) == 5 and parts[0] == DB_HOST and parts[2] == DB_NAME and parts[3] == DB_USER:
+        DB_PASS = parts[4]
+        break
+
+if DB_PASS is None:
+  DB_PASS = os.getenv('DB_PASS', '')
+
+QUERY = """
+SELECT
+  COALESCE(ser.address_gps_lat, s.latitude) lat,
+  COALESCE(ser.address_gps_lon, s.longitude) lon,
+  regexp_replace(s.name, '\\.[a-zA-Z0-9,!?]', '', 'g') as name,
+  s.updated_at as offline_since,
+  ser.service_id,
+  coalesce(d.data->>'port', 'Unknown') as upstream_port,
+  coalesce(p.hostname, 'Unknown') as upstream_hostname,
+  coalesce(split_part(p.ip::varchar, '/', 1), 'Unknown') as upstream_ip
+FROM
+  unms.site s,
+  ucrm.service ser,
+  ucrm.service_attribute sa,
+  unms.device d,
+  unms.device p
+WHERE
+  d.parent_id = p.device_id AND
+  LOWER(d.mac::text) = LOWER(sa.value) AND
+  s.ucrm_id::integer = ser.service_id AND
+  ser.service_id = sa.service_id AND
+  ser.status = 1 AND
+  sa.attribute_id = 2 AND
+  s.status = 'disconnected' AND
+  s.type = 'endpoint' AND
+  ser.client_id NOT IN (SELECT client_id FROM ucrm.client WHERE has_overdue_invoice = true) AND
+  ser.service_id NOT IN (SELECT service_id FROM ucrm.service_attribute WHERE attribute_id = 36 AND value::int = 1) AND
+  s.updated_at > NOW() - INTERVAL '30 days'
+ORDER BY s.updated_at DESC
+"""
+
+
+def fetch_data():
+  conn = psycopg2.connect(
+    host=DB_HOST,
+    port=DB_PORT,
+    dbname=DB_NAME,
+    user=DB_USER,
+    password=DB_PASS,
+  )
+  df = pd.read_sql_query(QUERY, conn)
+  conn.close()
+  return df
+
+
+def main():
+  print(f"[{datetime.now()}] Fetching data...")
+  df = fetch_data()
+  df.to_csv('/container-data/unms_status.csv', index=False)
+  print(df)
+
+
+if __name__ == '__main__':
+  main()
+EOF
+  chmod +x "$POLL_SCRIPT_HOST"
+fi
+
+# === 10. Build and start the container ==================================
 echo "[+] Building and starting uisp-tester container..."
 cd "$COMPOSE_DIR"
 docker compose up -d --build uisp-tester
 
-# === 9. Run injection immediately =======================================
+# === 11. Run injection immediately =======================================
 echo "[+] Running first injection..."
 "$INJECTOR_SCRIPT"
 
-# === 10. Post-deploy self-test ==========================================
+# === 12. Post-deploy self-test ==========================================
 run_self_test() {
   local failures=0
   local health=""
@@ -290,11 +428,18 @@ run_self_test() {
 
 run_self_test
 
-# === 11. Final status ===================================================
+# === 13. Ensure invoking user can manage workspace ======================
+if [[ "$INSTALL_USER" != "root" ]]; then
+  echo "[+] Granting workspace access to $INSTALL_USER:$INSTALL_GROUP"
+  chown -R "$INSTALL_USER:$INSTALL_GROUP" "$COMPOSE_DIR"
+fi
+
+# === 14. Final status ====================================================
 echo
 echo "Installation complete!"
 echo "  Container: uisp-tester"
 echo "  Password file (in container): $TARGET_IN_CONTAINER"
+echo "  Poll script (in container): $POLL_SCRIPT_IN_CONTAINER"
 echo "  Password file (on host): $HOST_TARGET"
 echo "  Cron: every 5 minutes → $CRON_FILE"
 echo "  Log: $LOG_FILE"
@@ -303,7 +448,7 @@ echo "Verify:"
 echo "  docker exec uisp-tester cat $TARGET_IN_CONTAINER"
 echo
 
-# === 12. Setup logrotate for inject-pgpass.log ==========================
+# === 15. Setup logrotate for inject-pgpass.log ==========================
 echo "[+] Configuring logrotate for inject-pgpass.log..."
 cat > /etc/logrotate.d/inject-pgpass <<'EOF'
 /var/log/inject-pgpass.log {
