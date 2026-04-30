@@ -1,0 +1,12 @@
+# Backup files
+*.bak
+
+# Container data
+container-data/
+
+# Docker compose overrides
+docker-compose.override.yml
+
+# Environment files
+.env
+.env.local

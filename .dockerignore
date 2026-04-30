@@ -1,0 +1,6 @@
+.dockerignore
+.git
+*.log
+container-data/   # ← Don't bake host data into image
+__pycache__
+*.tmp
