@@ -1,0 +1,23 @@
+# /opt/uisp-test/docker-compose.yml
+services:
+  uisp-tester:
+    build: .
+    container_name: uisp-tester
+    restart: unless-stopped
+    volumes:
+      - ./container-data:/container-data   # ← Now consistent
+    networks:
+      unms_public: {}
+      unms_internal: {}
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://unms-api:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  unms_public:
+    external: true
+  unms_internal:
+    external: true
