@@ -32,11 +32,11 @@ curl -fsSL https://raw.githubusercontent.com/JimBouse/uisp-test/refs/heads/maste
 
 The uisp-tester container:
 - Runs an HTTPS web server on port 9443 (serves uisp-helper tools)
-- Polls the UISP PostgreSQL database every 5 minutes (configurable)
+- Provides on-demand polling of UISP offline devices (triggered by API requests)
+- Caches polling results for 10 seconds to avoid excessive database queries
 - Identifies offline devices and gathers their details
 - Generates a CSV report: `/container-data/unms_status.csv`
-- Maintains polling logs in `/container-data/logs/poll-unms.log`
-- Automatically refreshes the PostgreSQL password every 5 minutes
+- Automatically refreshes the PostgreSQL password from UISP
 
 ## Web Server
 
@@ -76,17 +76,17 @@ After installation, verify the setup:
 # Check container status
 docker ps | grep uisp-tester
 
-# View the generated CSV
-cat /opt/uisp-test/container-data/unms_status.csv
-
-# Check the polling logs
-tail -f /opt/uisp-test/container-data/logs/poll-unms.log
-
 # Verify password was injected
 docker exec uisp-tester cat /container-data/pgpass.txt
 
 # Test the web server
 curl -k https://localhost:9443/status
+
+# Trigger polling and get offline devices (will cache for 10 seconds)
+curl -k https://localhost:9443/offline-devices.json | python3 -m json.tool
+
+# View the generated CSV
+cat /opt/uisp-test/container-data/unms_status.csv
 
 # View HTML status page (in browser)
 https://your-host:9443/
@@ -96,16 +96,21 @@ https://your-host:9443/
 
 ### Environment Variables
 
-Inside the container, the polling script uses:
-- `DB_HOST` — PostgreSQL host (default: `unms-postgres`)
-- `DB_PORT` — PostgreSQL port (default: `5432`)
-- `DB_NAME` — Database name (default: `unms`)
-- `DB_USER` — Database user (default: `unms`)
-- `DB_PASS` — Auto-injected from `/container-data/pgpass.txt`
+No special environment variables needed. The container automatically:
+- Detects PostgreSQL credentials from UISP
+- Loads UNMS Let's Encrypt certificates
+- Configures polling on-demand with 10-second cache TTL
 
-### Polling Frequency
+### Polling Behavior
 
-The polling script runs on a schedule defined by cron in the container. Modify `/etc/cron.d/inject-pgpass` on the host to adjust frequency (default: every 5 minutes).
+Polling is **on-demand** and **cached**:
+- When you hit `/offline-devices` or `/offline-devices.json`, the polling script executes
+- Results are cached for **10 seconds**
+- Subsequent requests within 10 seconds return cached data (fast)
+- After 10 seconds, the next request triggers a fresh poll
+- This avoids hammering the database with frequent requests
+
+**No data appears until the first API request is made to the `/offline-devices*` endpoints.**
 
 ## Output
 
@@ -131,18 +136,36 @@ The polling script runs on a schedule defined by cron in the container. Modify `
 
 ### No data in CSV
 
-This is normal in a dev environment with no devices. Check the logs:
+CSV is generated on-demand. To trigger polling:
 
 ```bash
-tail -50 /opt/uisp-test/container-data/logs/poll-unms.log
+# Trigger polling with API request
+curl -k https://localhost:9443/offline-devices.json
+
+# Then check the CSV file
+cat /opt/uisp-test/container-data/unms_status.csv
+
+# Or if running remotely
+curl -k https://your-host:9443/offline-devices.json
 ```
 
-### PostgreSQL connection errors
+If the CSV is still empty, you likely have no offline devices in your UISP system (normal).
 
-Verify database connectivity from the container:
+### No API response
+
+Verify the container is running:
 
 ```bash
-docker exec uisp-tester psql -h unms-postgres -U unms -d unms -c "SELECT 1"
+docker ps | grep uisp-tester
+```
+
+If not running, check logs:
+
+```bash
+docker logs uisp-tester
+```
+
+Make sure port 9443 is accessible and SSL certificate is loaded.
 ```
 
 ### API unreachable
