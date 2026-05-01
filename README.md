@@ -187,7 +187,17 @@ These networks are created by UISP and must exist before the container starts.
 
 ## Uninstallation
 
+### Quick removal (one-line command)
+
 To completely remove the uisp-tester container and all associated resources:
+
+```bash
+sudo docker compose -f /opt/uisp-test/docker-compose.yml down && sudo rm -rf /opt/uisp-test /etc/cron.d/inject-pgpass /root/inject-pgpass.sh /var/log/inject-pgpass.log
+```
+
+### Step-by-step removal
+
+Alternatively, remove components individually:
 
 ### 1. Stop and remove the container
 
@@ -201,20 +211,20 @@ docker compose -f /opt/uisp-test/docker-compose.yml down
 sudo rm /etc/cron.d/inject-pgpass
 ```
 
-### 3. Remove the injector script (optional)
+### 3. Remove the injector script
 
 ```bash
 sudo rm /root/inject-pgpass.sh
 ```
 
-### 4. Remove the logs (optional)
+### 4. Remove the logs
 
 ```bash
 sudo rm /var/log/inject-pgpass.log
 sudo rm -rf /opt/uisp-test/container-data/logs/
 ```
 
-### 5. Remove the entire workspace (optional)
+### 5. Remove the entire workspace
 
 ```bash
 sudo rm -rf /opt/uisp-test
