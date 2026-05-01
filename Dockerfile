@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y wget \
 # Install Python libraries for polling script
 RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas inotify-tools && rm -rf /var/lib/apt/lists/*
 
+# Install Python packages via pip
+RUN pip3 install bcrypt --break-system-packages
+
 # Timezone
 ENV TZ=America/New_York
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
