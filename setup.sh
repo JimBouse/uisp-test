@@ -140,8 +140,11 @@ services:
     build: .
     container_name: uisp-tester
     restart: unless-stopped
+    ports:
+      - "9443:9443"
     volumes:
       - ./container-data:/container-data   # ← Now consistent
+      - /home/unms/data/cert:/cert:ro      # ← UNMS Let's Encrypt certs (read-only)
     networks:
       unms_public: {}
       unms_internal: {}
@@ -193,7 +196,9 @@ check_or_prompt_replace() {
     echo "[INFO] Required docker-compose.yml settings:"
     echo "  - Service name: uisp-tester"
     echo "  - Uses local build context (build: .)"
-    echo "  - Volume: ./container-data:/container-data"
+    echo "  - Ports: 9443:9443 (HTTPS web server)"
+    echo "  - Volumes: ./container-data:/container-data"
+    echo "  - Volumes: /home/unms/data/cert:/cert:ro (UNMS Let's Encrypt certs)"
     echo "  - Networks: unms_public and unms_internal"
     echo "  - Healthcheck against http://unms-api:8081/nms/api/v2.1/nms/version"
   fi
