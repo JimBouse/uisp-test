@@ -14,7 +14,7 @@ A Docker-based utility container that polls the UISP (Ubiquiti Intelligent Servi
 Run this one-line installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JimBouse/uisp-test/refs/heads/master/setup.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/JimBouse/uisp-test/refs/heads/master/setup.sh > /tmp/uisp-helper-setup.sh && sudo bash /tmp/uisp-helper-setup.sh
 ```
 
 ### What the installer does:
