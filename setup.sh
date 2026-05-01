@@ -355,16 +355,28 @@ EOF
   chmod +x "$POLL_SCRIPT_HOST"
 fi
 
-# === 10. Run injection immediately =======================================
+# === 10. Ensure web server exists =======================================
+if [[ ! -f "$HOST_DATA_DIR/uisp-helper-server.py" ]]; then
+  if [[ -f "$COMPOSE_DIR/uisp-helper-server.py" ]]; then
+    echo "[+] Copying web server to container-data..."
+    cp "$COMPOSE_DIR/uisp-helper-server.py" "$HOST_DATA_DIR/"
+    chmod +x "$HOST_DATA_DIR/uisp-helper-server.py"
+  else
+    echo "[ERROR] Web server file not found at $COMPOSE_DIR/uisp-helper-server.py"
+    exit 1
+  fi
+fi
+
+# === 11. Run injection immediately =======================================
 echo "[+] Running first injection..."
 "$INJECTOR_SCRIPT"
 
-# === 11. Build and start the container ==================================
+# === 12. Build and start the container ==================================
 echo "[+] Building and starting uisp-tester container..."
 cd "$COMPOSE_DIR"
 docker compose up -d --build --force-recreate uisp-tester
 
-# === 12. Post-deploy self-test ==========================================
+# === 13. Post-deploy self-test ==========================================
 run_self_test() {
   local failures=0
   local health=""
@@ -433,13 +445,13 @@ run_self_test() {
 
 run_self_test
 
-# === 13. Ensure invoking user can manage workspace ======================
+# === 14. Ensure invoking user can manage workspace ======================
 if [[ "$INSTALL_USER" != "root" ]]; then
   echo "[+] Granting workspace access to $INSTALL_USER:$INSTALL_GROUP"
   chown -R "$INSTALL_USER:$INSTALL_GROUP" "$COMPOSE_DIR"
 fi
 
-# === 14. Final status ====================================================
+# === 15. Final status ====================================================
 echo
 echo "Installation complete!"
 echo "  Container: uisp-tester"
