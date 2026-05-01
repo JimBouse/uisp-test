@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/JimBouse/uisp-test/refs/heads/maste
 ## What it does
 
 The uisp-tester container:
-- Runs an HTTPS web server on port 9080 (serves uisp-helper tools)
+- Runs an HTTPS web server on port 9443 (serves uisp-helper tools)
 - Polls the UISP PostgreSQL database every 5 minutes (configurable)
 - Identifies offline devices and gathers their details
 - Generates a CSV report: `/container-data/unms_status.csv`
@@ -42,7 +42,7 @@ The uisp-tester container:
 
 The uisp-helper web server provides:
 
-**Port:** 9443 HTTPS (on port 9080)
+**Port:** 9443 HTTPS
 **SSL Certificate:** Uses UNMS Let's Encrypt certificates
 
 **Available Endpoints:**
@@ -54,18 +54,18 @@ The uisp-helper web server provides:
 **Examples:**
 ```bash
 # Get JSON status
-curl -k https://your-host:9080/status
+curl -k https://your-host:9443/status
 
 # Download offline devices as CSV
-curl -k https://your-host:9080/offline-devices -o devices.csv
+curl -k https://your-host:9443/offline-devices -o devices.csv
 
 # Get JSON data
-curl -k https://your-host:9080/offline-devices.json
+curl -k https://your-host:9443/offline-devices.json
 ```
 
 **Access:**
 ```
-https://your-host:9080/
+https://your-host:9443/
 ```
 
 ## Verification
@@ -86,10 +86,10 @@ tail -f /opt/uisp-test/container-data/logs/poll-unms.log
 docker exec uisp-tester cat /container-data/pgpass.txt
 
 # Test the web server
-curl -k https://localhost:9080/status
+curl -k https://localhost:9443/status
 
 # View HTML status page (in browser)
-https://your-host:9080/
+https://your-host:9443/
 ```
 
 ## Configuration

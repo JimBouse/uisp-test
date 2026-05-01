@@ -39,7 +39,7 @@ fi
 
 # Start UISP Helper web server
 if [ -f /container-data/uisp-helper-server.py ]; then
-  echo "[HELPER] Starting UISP Helper web server on port 9080..."
+  echo "[HELPER] Starting UISP Helper web server on port 9443..."
   mkdir -p /container-data/logs
   /usr/bin/python3 /container-data/uisp-helper-server.py >> /container-data/logs/uisp-helper.log 2>&1 &
   echo "[HELPER] Web server started (PID: $!)"
