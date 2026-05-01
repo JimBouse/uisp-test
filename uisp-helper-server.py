@@ -212,6 +212,10 @@ def main():
     port = int(os.environ.get("UISP_HELPER_PORT", 9443))
     host = "0.0.0.0"
     
+    # Ensure pgpass.txt exists (needed by poll_unms_status.py)
+    if not os.path.exists("/container-data/pgpass.txt"):
+        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] WARNING: pgpass.txt not found - polling will fail")
+    
     # UNMS Let's Encrypt certificate paths
     cert_dir = "/cert"
     cert_file = os.path.join(cert_dir, "live.crt")
