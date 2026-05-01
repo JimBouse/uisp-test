@@ -4,8 +4,11 @@ services:
     build: .
     container_name: uisp-tester
     restart: unless-stopped
+    ports:
+      - "9080:9080"
     volumes:
       - ./container-data:/container-data   # ← Now consistent
+      - /home/unms/data/cert:/cert:ro      # ← UNMS Let's Encrypt certs (read-only)
     networks:
       unms_public: {}
       unms_internal: {}
