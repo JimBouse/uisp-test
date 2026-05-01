@@ -1,8 +1,12 @@
 # Backup files
 *.bak
 
-# Container data
-container-data/
+# Container data - exclude runtime files but include application code
+container-data/logs/
+container-data/pgpass.txt
+container-data/*.csv
+container-data/__pycache__
+container-data/.pytest_cache
 
 # Docker compose overrides
 docker-compose.override.yml
