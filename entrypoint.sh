@@ -24,8 +24,11 @@ if [ -f /container-data/web/main.py ]; then
   echo "[HELPER] Starting UISP Helper web server on port 9443..."
   mkdir -p /container-data/logs
   cd /container-data/web
-  /usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 9443 --ssl-certfile=/cert/live.crt --ssl-keyfile=/cert/live.key >> /container-data/logs/https.log 2>&1 &
-  echo "[HELPER] Web server started (PID: $!)"
+  # Use --reload for development (auto-restarts on file changes)
+  # PYTHONDONTWRITEBYTECODE=1 prevents .pyc caching
+  export PYTHONDONTWRITEBYTECODE=1
+  /usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 9443 --ssl-certfile=/cert/live.crt --ssl-keyfile=/cert/live.key --reload >> /container-data/logs/https.log 2>&1 &
+  echo "[HELPER] Web server started (PID: $!) - Reload enabled for development"
 else
   echo "[WARN] web/main.py not found - web server will not start"
 fi

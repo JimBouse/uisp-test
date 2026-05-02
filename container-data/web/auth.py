@@ -1,10 +1,12 @@
 """
-UNMS user authentication module
+UNMS user authentication module with brute force prevention
 """
 import base64
+import time
 import psycopg2
 import bcrypt
 from typing import Optional, Tuple
+from threading import Lock
 
 DB_HOST = "unms-postgres"
 DB_PORT = "5432"
@@ -20,6 +22,12 @@ if __import__('os').path.exists(pgpass_file):
 
 if DB_PASS is None:
   DB_PASS = __import__('os').getenv('DB_PASS', '')
+
+# Brute force prevention
+MAX_FAILED_ATTEMPTS = 5
+LOCKOUT_DURATION = 300  # 5 minutes in seconds
+_failed_attempts = {}  # Format: {"ip:username": {"count": N, "timestamp": T}}
+_attempt_lock = Lock()
 
 
 def decode_basic_auth(auth_header: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -89,13 +97,56 @@ def verify_password(password: str, hashed: str) -> bool:
     return False
 
 
-def authenticate_user(username: str, password: str) -> Optional[dict]:
+def is_account_locked(key: str) -> bool:
+  """Check if account is locked due to too many failed attempts"""
+  with _attempt_lock:
+    if key not in _failed_attempts:
+      return False
+    
+    attempt_data = _failed_attempts[key]
+    elapsed = time.time() - attempt_data['timestamp']
+    
+    # If lockout period has passed, reset
+    if elapsed > LOCKOUT_DURATION:
+      del _failed_attempts[key]
+      return False
+    
+    # Still locked if count exceeded
+    return attempt_data['count'] >= MAX_FAILED_ATTEMPTS
+
+
+def record_failed_attempt(key: str):
+  """Record a failed login attempt"""
+  with _attempt_lock:
+    if key not in _failed_attempts:
+      _failed_attempts[key] = {"count": 0, "timestamp": time.time()}
+    
+    _failed_attempts[key]['count'] += 1
+    _failed_attempts[key]['timestamp'] = time.time()
+
+
+def clear_failed_attempts(key: str):
+  """Clear failed attempts on successful login"""
+  with _attempt_lock:
+    if key in _failed_attempts:
+      del _failed_attempts[key]
+
+
+def authenticate_user(username: str, password: str, client_ip: str = "unknown") -> Optional[dict]:
   """Authenticate user credentials against UNMS database"""
+  key = f"{client_ip}:{username}"
+  
+  # Check if account is locked
+  if is_account_locked(key):
+    return None
+  
   user = get_user_from_db(username)
   if not user:
+    record_failed_attempt(key)
     return None
   
   if verify_password(password, user['password_hash']):
+    clear_failed_attempts(key)
     # Return user info without password hash
     return {
       "id": user['id'],
@@ -103,5 +154,8 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
       "email": user['email'],
       "role": user['role']
     }
+  else:
+    record_failed_attempt(key)
+    return None
   
   return None

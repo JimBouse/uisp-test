@@ -13,10 +13,11 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional, Dict, List
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Request, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
 
 from auth import decode_basic_auth, authenticate_user
@@ -112,17 +113,132 @@ def get_cached_data():
 
 @app.get("/")
 async def index(request: Request):
-  """Public status page (no auth required for health checks)"""
-  try:
-    context = {
-      "request": request,
-      "port": "9443",
-      "status": "running"
-    }
-    return templates.TemplateResponse("status.html", context)
-  except Exception as e:
-    logger.error(f"Error rendering status page: {str(e)}")
-    return HTMLResponse(content="<h1>UISP Helper</h1><p>Running on port 9443</p>", status_code=200)
+  """Public status page (no auth required)"""
+  hostname = request.url.hostname or "localhost"
+  port = request.url.port or 9443
+  html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UISP Helper - Status</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .container {{
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }}
+        h1 {{ color: #333; margin-bottom: 10px; font-size: 2.5em; }}
+        .subtitle {{ color: #666; font-size: 1.1em; margin-bottom: 30px; }}
+        .status-badge {{ display: inline-block; background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }}
+        .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
+        .login-btn {{ background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 5px; text-decoration: none; cursor: pointer; font-weight: bold; transition: background 0.3s ease; }}
+        .login-btn:hover {{ background: #764ba2; }}
+        .info-section {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
+        .info-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }}
+        .info-item {{ background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea; }}
+        .info-item dt {{ color: #666; font-size: 0.85em; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }}
+        .info-item dd {{ color: #333; font-size: 1.1em; font-weight: 500; }}
+        .endpoints {{ margin-top: 40px; }}
+        .endpoints h2 {{ color: #333; margin-bottom: 20px; font-size: 1.5em; }}
+        .endpoint-card {{ background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 15px; }}
+        .endpoint-path {{ font-family: 'Monaco', 'Courier New', monospace; color: #667eea; font-weight: bold; font-size: 1.1em; margin-bottom: 5px; }}
+        .endpoint-desc {{ color: #666; font-size: 0.95em; margin-bottom: 10px; }}
+        .endpoint-auth {{ background: #fff3cd; border-left: 3px solid #ffc107; padding: 10px; border-radius: 4px; font-size: 0.85em; color: #856404; }}
+        .example {{ background: #f0f0f0; padding: 10px; border-radius: 4px; font-family: 'Monaco', 'Courier New', monospace; font-size: 0.85em; color: #333; margin-top: 10px; overflow-x: auto; }}
+        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em; text-align: center; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>UISP Helper</h1>
+                <p class="subtitle">On-demand polling for offline devices</p>
+            </div>
+            <a href="/login" class="login-btn">Login</a>
+        </div>
+        
+        <span class="status-badge">✓ Running</span>
+        
+        <div class="info-section">
+            <div class="info-grid">
+                <div class="info-item">
+                    <dt>Status</dt>
+                    <dd>RUNNING</dd>
+                </div>
+                <div class="info-item">
+                    <dt>Port</dt>
+                    <dd>{port} (HTTPS)</dd>
+                </div>
+                <div class="info-item">
+                    <dt>Service</dt>
+                    <dd>uisp-helper</dd>
+                </div>
+                <div class="info-item">
+                    <dt>Version</dt>
+                    <dd>2.0</dd>
+                </div>
+            </div>
+        </div>
+        
+        <div class="endpoints">
+            <h2>Available Endpoints</h2>
+            
+            <div class="endpoint-card">
+                <div class="endpoint-path">GET /status</div>
+                <div class="endpoint-desc">Server status and authentication info</div>
+                <div class="endpoint-auth">
+                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
+                </div>
+                <div class="example">curl -k --user username:password https://{hostname}:{port}/status</div>
+            </div>
+            
+            <div class="endpoint-card">
+                <div class="endpoint-path">GET /offline-devices</div>
+                <div class="endpoint-desc">Download offline devices as CSV file</div>
+                <div class="endpoint-auth">
+                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
+                </div>
+                <div class="example">curl -k --user username:password https://{hostname}:{port}/offline-devices -o devices.csv</div>
+            </div>
+            
+            <div class="endpoint-card">
+                <div class="endpoint-path">GET /offline-devices.json</div>
+                <div class="endpoint-desc">Get offline devices in JSON format</div>
+                <div class="endpoint-auth">
+                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
+                </div>
+                <div class="example">curl -k --user username:password https://{hostname}:{port}/offline-devices.json | python3 -m json.tool</div>
+            </div>
+            
+            <div class="endpoint-card">
+                <div class="endpoint-path">GET /health</div>
+                <div class="endpoint-desc">Health check (no authentication required)</div>
+                <div class="example">curl -k https://{hostname}:{port}/health</div>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p>UISP Helper 2.0 · Powered by FastAPI</p>
+            <p>Polling runs on-demand with 10-second cache TTL</p>
+        </div>
+    </div>
+</body>
+</html>"""
+  return HTMLResponse(content=html, status_code=200)
 
 
 @app.get("/status")
@@ -134,9 +250,9 @@ async def status(request: Request, authorization: Optional[str] = Header(None), 
     logger.warning(f"Missing credentials from {request.client.host}")
     raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
-  user = authenticate_user(username, password)
+  user = authenticate_user(username, password, request.client.host)
   if not user:
-    logger.warning(f"Failed login attempt for user: {username}")
+    logger.warning(f"Failed login attempt for user: {username} from {request.client.host}")
     raise HTTPException(status_code=401, detail="Invalid credentials", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
   csv_exists = os.path.exists("/container-data/unms_status.csv")
@@ -162,9 +278,9 @@ async def offline_devices_csv(request: Request, authorization: Optional[str] = H
     logger.warning(f"Missing credentials from {request.client.host}")
     raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
-  user = authenticate_user(username, password)
+  user = authenticate_user(username, password, request.client.host)
   if not user:
-    logger.warning(f"Failed login attempt for user: {username}")
+    logger.warning(f"Failed login attempt for user: {username} from {request.client.host}")
     raise HTTPException(status_code=401, detail="Invalid credentials", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
   csv_path = "/container-data/unms_status.csv"
@@ -189,9 +305,9 @@ async def offline_devices_json(request: Request, authorization: Optional[str] = 
     logger.warning(f"Missing credentials from {request.client.host}")
     raise HTTPException(status_code=401, detail="Unauthorized", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
-  user = authenticate_user(username, password)
+  user = authenticate_user(username, password, request.client.host)
   if not user:
-    logger.warning(f"Failed login attempt for user: {username}")
+    logger.warning(f"Failed login attempt for user: {username} from {request.client.host}")
     raise HTTPException(status_code=401, detail="Invalid credentials", headers={"WWW-Authenticate": "Basic realm=UNMS"})
   
   csv_path = "/container-data/unms_status.csv"
@@ -223,6 +339,73 @@ async def offline_devices_json(request: Request, authorization: Optional[str] = 
   except Exception as e:
     logger.error(f"Error parsing CSV: {str(e)}")
     raise HTTPException(status_code=500, detail=f"Error parsing data: {str(e)}")
+
+
+@app.get("/login")
+async def login_form(request: Request):
+  """Login form page"""
+  try:
+    context = {
+      "request": request,
+      "port": "9443",
+    }
+    return templates.TemplateResponse("login.html", context)
+  except Exception as e:
+    logger.error(f"Error rendering login page: {str(e)}")
+    return HTMLResponse("""
+      <html>
+        <head><title>Login - UISP Helper</title></head>
+        <body style="font-family: sans-serif; padding: 20px;">
+          <h1>UISP Helper Login</h1>
+          <form method="post" action="/login">
+            <div>
+              <label>Username: <input type="text" name="username" required></label>
+            </div>
+            <div>
+              <label>Password: <input type="password" name="password" required></label>
+            </div>
+            <button type="submit">Login</button>
+          </form>
+        </body>
+      </html>
+    """, status_code=200)
+
+
+@app.post("/login")
+async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
+  """Handle login form submission"""
+  user = authenticate_user(username, password, request.client.host)
+  if not user:
+    logger.warning(f"Failed form login for user: {username} from {request.client.host}")
+    return HTMLResponse("""
+      <html>
+        <head><title>Login Failed - UISP Helper</title></head>
+        <body style="font-family: sans-serif; padding: 20px;">
+          <h1>Login Failed</h1>
+          <p style="color: red;">Invalid username or password. Your account may be temporarily locked after too many failed attempts.</p>
+          <a href="/login">Try Again</a> | <a href="/">Back to Home</a>
+        </body>
+      </html>
+    """, status_code=401)
+  
+  logger.info(f"Successful form login for user: {username} from {request.client.host}")
+  
+  # Extract hostname and port for display
+  hostname = request.url.hostname or "localhost"
+  port = request.url.port or 9443
+  
+  return HTMLResponse(f"""
+    <html>
+      <head><title>Login Success - UISP Helper</title></head>
+      <body style="font-family: sans-serif; padding: 20px;">
+        <h1>Welcome!</h1>
+        <p>You have successfully logged in.</p>
+        <p>For API access, use HTTP Basic Auth with your UNMS credentials:</p>
+        <pre>curl -k --user username:password https://{hostname}:{port}/offline-devices</pre>
+        <a href="/">Back to Home</a>
+      </body>
+    </html>
+  """, status_code=200)
 
 
 @app.get("/health")

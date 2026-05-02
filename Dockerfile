@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y wget \
 RUN apt-get update && apt-get install -y python3-psycopg2 python3-pandas inotify-tools && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages via pip
-RUN pip3 install bcrypt fastapi uvicorn[standard] --break-system-packages
+RUN pip3 install bcrypt fastapi uvicorn[standard] python-multipart --break-system-packages
 
 # Timezone
 ENV TZ=America/New_York

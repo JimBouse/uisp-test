@@ -156,12 +156,40 @@
             font-size: 0.9em;
             text-align: center;
         }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .login-btn {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            text-decoration: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        
+        .login-btn:hover {
+            background: #764ba2;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>UISP Helper</h1>
-        <p class="subtitle">On-demand polling for offline devices</p>
+        <div class="header">
+            <div>
+                <h1>UISP Helper</h1>
+                <p class="subtitle">On-demand polling for offline devices</p>
+            </div>
+            <a href="/login" class="login-btn">Login</a>
+        </div>
         
         <span class="status-badge">✓ Running</span>
         
@@ -195,7 +223,7 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user localadmin:password https://your-host:{{ port }}/status</div>
+                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/status</div>
             </div>
             
             <div class="endpoint-card">
@@ -204,7 +232,7 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user localadmin:password https://your-host:{{ port }}/offline-devices -o devices.csv</div>
+                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/offline-devices -o devices.csv</div>
             </div>
             
             <div class="endpoint-card">
@@ -213,19 +241,18 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user localadmin:password https://your-host:{{ port }}/offline-devices.json | python3 -m json.tool</div>
+                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/offline-devices.json | python3 -m json.tool</div>
             </div>
             
             <div class="endpoint-card">
                 <div class="endpoint-path">GET /health</div>
                 <div class="endpoint-desc">Health check (no authentication required)</div>
-                <div class="example">curl -k https://your-host:{{ port }}/health</div>
+                <div class="example">curl -k https://{{ hostname }}:{{ port }}/health</div>
             </div>
         </div>
         
         <div class="footer">
-            <p>UISP Helper 2.0 · Powered by FastAPI</p>
-            <p>Polling runs on-demand with 10-second cache TTL</p>
+            <p>UISP Helper 2.0 · Powered by MyISPapp.com</p>
         </div>
     </div>
 </body>
