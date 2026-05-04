@@ -14,11 +14,9 @@ from typing import Optional, Dict, List
 from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Header, Request, Form
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 import uvicorn
+from mako.template import Template
 
 from auth import decode_basic_auth, authenticate_user
 
@@ -44,15 +42,9 @@ CACHE_TTL = 10  # 10 seconds
 # === FastAPI App Setup ===
 app = FastAPI(title="UISP Helper", version="2.0")
 
-# Mount static files
-static_dir = "/container-data/web/static"
-os.makedirs(static_dir, exist_ok=True)
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# Setup templates
+# Setup templates directory
 templates_dir = "/container-data/web/templates"
 os.makedirs(templates_dir, exist_ok=True)
-templates = Jinja2Templates(directory=templates_dir)
 
 
 def require_auth(f):
@@ -116,128 +108,12 @@ async def index(request: Request):
   """Public status page (no auth required)"""
   hostname = request.url.hostname or "localhost"
   port = request.url.port or 9443
-  html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UISP Helper - Status</title>
-    <style>
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }}
-        .container {{
-            background: white;
-            border-radius: 10px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 900px;
-            width: 100%;
-            padding: 40px;
-        }}
-        h1 {{ color: #333; margin-bottom: 10px; font-size: 2.5em; }}
-        .subtitle {{ color: #666; font-size: 1.1em; margin-bottom: 30px; }}
-        .status-badge {{ display: inline-block; background: #4CAF50; color: white; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; }}
-        .header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }}
-        .login-btn {{ background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 5px; text-decoration: none; cursor: pointer; font-weight: bold; transition: background 0.3s ease; }}
-        .login-btn:hover {{ background: #764ba2; }}
-        .info-section {{ background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }}
-        .info-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }}
-        .info-item {{ background: white; padding: 15px; border-radius: 6px; border-left: 4px solid #667eea; }}
-        .info-item dt {{ color: #666; font-size: 0.85em; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }}
-        .info-item dd {{ color: #333; font-size: 1.1em; font-weight: 500; }}
-        .endpoints {{ margin-top: 40px; }}
-        .endpoints h2 {{ color: #333; margin-bottom: 20px; font-size: 1.5em; }}
-        .endpoint-card {{ background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; margin-bottom: 15px; }}
-        .endpoint-path {{ font-family: 'Monaco', 'Courier New', monospace; color: #667eea; font-weight: bold; font-size: 1.1em; margin-bottom: 5px; }}
-        .endpoint-desc {{ color: #666; font-size: 0.95em; margin-bottom: 10px; }}
-        .endpoint-auth {{ background: #fff3cd; border-left: 3px solid #ffc107; padding: 10px; border-radius: 4px; font-size: 0.85em; color: #856404; }}
-        .example {{ background: #f0f0f0; padding: 10px; border-radius: 4px; font-family: 'Monaco', 'Courier New', monospace; font-size: 0.85em; color: #333; margin-top: 10px; overflow-x: auto; }}
-        .footer {{ margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 0.9em; text-align: center; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h1>UISP Helper</h1>
-                <p class="subtitle">On-demand polling for offline devices</p>
-            </div>
-            <a href="/login" class="login-btn">Login</a>
-        </div>
-        
-        <span class="status-badge">✓ Running</span>
-        
-        <div class="info-section">
-            <div class="info-grid">
-                <div class="info-item">
-                    <dt>Status</dt>
-                    <dd>RUNNING</dd>
-                </div>
-                <div class="info-item">
-                    <dt>Port</dt>
-                    <dd>{port} (HTTPS)</dd>
-                </div>
-                <div class="info-item">
-                    <dt>Service</dt>
-                    <dd>uisp-helper</dd>
-                </div>
-                <div class="info-item">
-                    <dt>Version</dt>
-                    <dd>2.0</dd>
-                </div>
-            </div>
-        </div>
-        
-        <div class="endpoints">
-            <h2>Available Endpoints</h2>
-            
-            <div class="endpoint-card">
-                <div class="endpoint-path">GET /status</div>
-                <div class="endpoint-desc">Server status and authentication info</div>
-                <div class="endpoint-auth">
-                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
-                </div>
-                <div class="example">curl -k --user username:password https://{hostname}:{port}/status</div>
-            </div>
-            
-            <div class="endpoint-card">
-                <div class="endpoint-path">GET /offline-devices</div>
-                <div class="endpoint-desc">Download offline devices as CSV file</div>
-                <div class="endpoint-auth">
-                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
-                </div>
-                <div class="example">curl -k --user username:password https://{hostname}:{port}/offline-devices -o devices.csv</div>
-            </div>
-            
-            <div class="endpoint-card">
-                <div class="endpoint-path">GET /offline-devices.json</div>
-                <div class="endpoint-desc">Get offline devices in JSON format</div>
-                <div class="endpoint-auth">
-                    <strong>⚠ Requires Authentication:</strong> HTTP Basic Auth with UNMS credentials
-                </div>
-                <div class="example">curl -k --user username:password https://{hostname}:{port}/offline-devices.json | python3 -m json.tool</div>
-            </div>
-            
-            <div class="endpoint-card">
-                <div class="endpoint-path">GET /health</div>
-                <div class="endpoint-desc">Health check (no authentication required)</div>
-                <div class="example">curl -k https://{hostname}:{port}/health</div>
-            </div>
-        </div>
-        
-        <div class="footer">
-            <p>UISP Helper 2.0 · Powered by FastAPI</p>
-            <p>Polling runs on-demand with 10-second cache TTL</p>
-        </div>
-    </div>
-</body>
-</html>"""
+  
+  template_path = "/container-data/web/templates/status.html"
+  with open(template_path, "r") as f:
+    template = Template(f.read())
+  
+  html = template.render(hostname=hostname, port=port)
   return HTMLResponse(content=html, status_code=200)
 
 
@@ -345,11 +221,10 @@ async def offline_devices_json(request: Request, authorization: Optional[str] = 
 async def login_form(request: Request):
   """Login form page"""
   try:
-    context = {
-      "request": request,
-      "port": "9443",
-    }
-    return templates.TemplateResponse("login.html", context)
+    template_path = "/container-data/web/templates/login.html"
+    with open(template_path, "r") as f:
+      html = f.read()
+    return HTMLResponse(content=html, status_code=200)
   except Exception as e:
     logger.error(f"Error rendering login page: {str(e)}")
     return HTMLResponse("""

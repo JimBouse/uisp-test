@@ -197,11 +197,11 @@
             <div class="info-grid">
                 <div class="info-item">
                     <dt>Status</dt>
-                    <dd>{{ status|upper }}</dd>
+                    <dd>RUNNING</dd>
                 </div>
                 <div class="info-item">
                     <dt>Port</dt>
-                    <dd>{{ port }} (HTTPS)</dd>
+                    <dd>${port} (HTTPS)</dd>
                 </div>
                 <div class="info-item">
                     <dt>Service</dt>
@@ -223,7 +223,7 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/status</div>
+                <div class="example">curl -k --user username:password https://${hostname}:${port}/status</div>
             </div>
             
             <div class="endpoint-card">
@@ -232,7 +232,7 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/offline-devices -o devices.csv</div>
+                <div class="example">curl -k --user username:password https://${hostname}:${port}/offline-devices -o devices.csv</div>
             </div>
             
             <div class="endpoint-card">
@@ -241,13 +241,13 @@
                 <div class="endpoint-auth">
                     <span class="auth-required">⚠ Requires Authentication:</span> HTTP Basic Auth with UNMS credentials
                 </div>
-                <div class="example">curl -k --user username:password https://{{ hostname }}:{{ port }}/offline-devices.json | python3 -m json.tool</div>
+                <div class="example">curl -k --user username:password https://${hostname}:${port}/offline-devices.json | python3 -m json.tool</div>
             </div>
             
             <div class="endpoint-card">
                 <div class="endpoint-path">GET /health</div>
                 <div class="endpoint-desc">Health check (no authentication required)</div>
-                <div class="example">curl -k https://{{ hostname }}:{{ port }}/health</div>
+                <div class="example">curl -k https://${hostname}:${port}/health</div>
             </div>
         </div>
         
